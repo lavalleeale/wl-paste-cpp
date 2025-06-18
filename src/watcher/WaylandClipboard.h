@@ -27,6 +27,7 @@ private:
     std::queue<std::string> mime_types;
     zwlr_data_control_offer_v1 *offer = nullptr;
     std::list<std::map<std::string, std::string>> clipboard_history;
+    bool copied = false;
 
     // Callback implementations
     void handle_selection(zwlr_data_control_device_v1 *, zwlr_data_control_offer_v1 *offer);
@@ -41,4 +42,5 @@ private:
     void handle_offer_completion();
 
     void save_clipboard_data();
+    void load_clipboard_data();
 };

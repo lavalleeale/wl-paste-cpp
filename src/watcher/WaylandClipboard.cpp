@@ -28,6 +28,7 @@ WaylandClipboard::~WaylandClipboard()
 
 bool WaylandClipboard::initialize()
 {
+    load_clipboard_data();
     if (!connection.initialize())
     {
         return false;
@@ -180,7 +181,52 @@ void WaylandClipboard::handle_offer_completion()
 {
     zwlr_data_control_offer_v1_destroy(this->offer);
     this->offer = nullptr;
+    // Check if we already have this entry (important on startup)
+    if (clipboard_history.size() > 1)
+    {
+        auto first = clipboard_history.front();
+        auto second = *std::next(clipboard_history.begin());
+        for (const auto &[key, value] : second)
+        {
+            if (copied)
+            {
+                if (first == second)
+                {
+                    // If the first and second entries are the same, we can skip this check
+                    std::cerr << "Skipping duplicate entry in clipboard history" << std::endl;
+                    clipboard_history.pop_front();
+                    break;
+                }
+            }
+            else
+            {
+                if (value != "" && first.find(key) != first.end() && first[key] == value)
+                {
+                    clipboard_history.erase(std::next(clipboard_history.begin()));
+                    break;
+                }
+            }
+        }
+        copied = true; // Indicate that we have copied data
+    }
     save_clipboard_data();
+}
+
+void WaylandClipboard::load_clipboard_data()
+{
+    // Load clipboard_history from $XDG_DATA_HOME/clipboard_history.json
+    nlohmann::json json_data;
+    std::string data_home = getenv("XDG_DATA_HOME") ? getenv("XDG_DATA_HOME") : std::string(getenv("HOME")) + "/.local/share";
+    std::string file_path = data_home + "/clipboard_history.json";
+    std::ifstream file(file_path);
+    if (!file.is_open())
+    {
+        std::cerr << "Failed to open file for reading: " << file_path << std::endl;
+        return;
+    }
+
+    file >> json_data;
+    clipboard_history = json_data.get<std::list<std::map<std::string, std::string>>>();
 }
 
 void WaylandClipboard::save_clipboard_data()
