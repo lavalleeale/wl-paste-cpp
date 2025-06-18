@@ -1,5 +1,5 @@
 project(
-    'wl-paste-cpp',
+    'wayland-clipboard-hist',
     ['cpp', 'c'],
     meson_version: '>=0.62.0',
     default_options: [
@@ -10,41 +10,13 @@ project(
     ],
 )
 
-# core Wayland
-wl_client = dependency('wayland-client')
+subproj_names = ['watcher']
+all_tgts = []
 
-# wlr protocols (provides wlr-data-control-unstable-v1.xml)
-wlr_proto = dependency('wlr-protocols', method: 'pkg-config', required: true)
-wlr_pkgdatadir = wlr_proto.get_variable('pkgdatadir')
+foreach n : subproj_names
+    sp = subproject(n)
+    default_tgt = sp.get_variable('default_target', [])
+    all_tgts += default_tgt
+endforeach
 
-# Use the unstable meson module for Wayland
-wl_mod = import('unstable-wayland')
-
-# Build path to the XML and generate the C bindings
-data_control_xml = join_paths(
-    wlr_pkgdatadir,
-    'unstable',
-    'wlr-data-control-unstable-v1.xml',
-)
-data_control = wl_mod.scan_xml(data_control_xml)  # generates the protocol C + headers :contentReference[oaicite:1]{index=1}
-
-nlohmann_json = dependency('nlohmann_json', required: true)
-
-utf8cpp = dependency('utf8cpp', required: true)
-
-dependencies = [wl_client, nlohmann_json, utf8cpp]
-
-executable(
-    'wl-paste-cpp',
-    [
-        'src/watcher/main.cpp',
-        'src/watcher/utils.cpp',
-        'src/watcher/WaylandClipboard.cpp',
-        'src/watcher/WaylandConnection.cpp',
-        'src/watcher/Offer.cpp',
-    ],
-    data_control,
-    dependencies: dependencies,
-    install: true,
-    cpp_args: ['-Wall', '-Wextra', '-pedantic'],
-)
+alias_target('everything', all_tgts)
