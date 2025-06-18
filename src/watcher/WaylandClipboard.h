@@ -7,6 +7,7 @@
 #include <queue>
 #include <map>
 #include <list>
+#include <memory>
 
 class WaylandClipboard
 {
@@ -24,13 +25,12 @@ public:
 private:
     WaylandConnection connection;
     int pipe_fds[2] = {-1, -1};
-    std::queue<std::string> mime_types;
-    zwlr_data_control_offer_v1 *offer = nullptr;
+    std::shared_ptr<Offer> offer = nullptr;
     std::list<std::map<std::string, std::string>> clipboard_history;
     bool copied = false;
 
     // Callback implementations
-    void handle_selection(zwlr_data_control_device_v1 *, zwlr_data_control_offer_v1 *offer);
+    void handle_selection(std::shared_ptr<Offer> offer);
 
     bool setup_pipe();
     void cleanup();

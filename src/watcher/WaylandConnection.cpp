@@ -1,5 +1,7 @@
 #include "WaylandConnection.h"
 #include <iostream>
+#include <string>
+#include <algorithm>
 
 WaylandConnection::~WaylandConnection()
 {
@@ -95,6 +97,23 @@ void WaylandConnection::handle_registry_global(wl_registry *reg, uint32_t name, 
     }
 }
 
+std::shared_ptr<Offer> WaylandConnection::get_offer(zwlr_data_control_offer_v1 *offer, bool pop)
+{
+    auto it = std::ranges::find_if(offers,
+                                   [offer](const std::shared_ptr<Offer> &o)
+                                   { return o->matches(offer); });
+    if (it != offers.end())
+    {
+        auto offer = *it;
+        if (pop)
+        {
+            offers.erase(it);
+        }
+        return offer;
+    }
+    throw std::runtime_error("Offer not found");
+}
+
 bool WaylandConnection::create_data_control_device()
 {
     if (!dc_manager || !seat)
@@ -132,57 +151,49 @@ void WaylandConnection::data_offer_wrapper(void *data, zwlr_data_control_device_
     static_cast<WaylandConnection *>(data)->handle_data_offer(dev, offer);
 }
 
-void WaylandConnection::primary_selection_wrapper(void *data, zwlr_data_control_device_v1 *device, zwlr_data_control_offer_v1 *offer)
-{
-    static_cast<WaylandConnection *>(data)->handle_primary_selection(device, offer);
-}
-
-void WaylandConnection::data_finished_wrapper(void *data, zwlr_data_control_device_v1 *device)
-{
-    static_cast<WaylandConnection *>(data)->handle_data_finished(device);
-}
-
 // New member function implementations for data control
-void WaylandConnection::handle_offer(zwlr_data_control_offer_v1 *offer, const char *mime_type)
+void WaylandConnection::handle_offer(zwlr_data_control_offer_v1 *offer_ptr, const char *mime_type)
 {
-    if (offer_callback)
+    if (!offer_ptr || !mime_type)
     {
-        offer_callback(offer, mime_type);
+        std::cerr << "Received null offer or mime_type" << std::endl;
+        return;
+    }
+    try
+    {
+        auto offer = get_offer(offer_ptr);
+        offer->add_mime_type(mime_type);
+    }
+    catch (const std::runtime_error &e)
+    {
+        std::cerr << "Error handling offer: " << e.what() << std::endl;
     }
 }
 
-void WaylandConnection::handle_selection(zwlr_data_control_device_v1 *device, zwlr_data_control_offer_v1 *offer)
+void WaylandConnection::handle_selection(zwlr_data_control_device_v1 *, zwlr_data_control_offer_v1 *offer_ptr)
 {
-    if (selection_callback)
+    if (offer_ready_callback)
     {
-        selection_callback(device, offer);
+        try
+        {
+            offer_ready_callback(get_offer(offer_ptr, true));
+        }
+        catch (const std::runtime_error &e)
+        {
+            std::cerr << "Error handling offer: " << e.what() << std::endl;
+        }
     }
 }
 
-void WaylandConnection::handle_data_offer(zwlr_data_control_device_v1 *dev, zwlr_data_control_offer_v1 *offer)
+void WaylandConnection::handle_data_offer(zwlr_data_control_device_v1 *, zwlr_data_control_offer_v1 *offer)
 {
+    if (!offer)
+    {
+        std::cerr << "Received null offer" << std::endl;
+        return;
+    }
     wl_proxy_set_queue((struct wl_proxy *)offer, event_queue);
     zwlr_data_control_offer_v1_add_listener(offer, &offer_listener, this);
     wl_display_flush(display);
-
-    if (data_offer_callback)
-    {
-        data_offer_callback(dev, offer);
-    }
-}
-
-void WaylandConnection::handle_primary_selection(zwlr_data_control_device_v1 *device, zwlr_data_control_offer_v1 *offer)
-{
-    if (primary_selection_callback)
-    {
-        primary_selection_callback(device, offer);
-    }
-}
-
-void WaylandConnection::handle_data_finished(zwlr_data_control_device_v1 *device)
-{
-    if (data_finished_callback)
-    {
-        data_finished_callback(device);
-    }
+    offers.push_back(std::make_shared<Offer>(offer));
 }
