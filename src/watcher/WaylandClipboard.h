@@ -6,7 +6,7 @@
 #include <string>
 #include <queue>
 #include <map>
-#include <vector>
+#include <list>
 
 class WaylandClipboard
 {
@@ -26,7 +26,7 @@ private:
     int pipe_fds[2] = {-1, -1};
     std::queue<std::string> mime_types;
     zwlr_data_control_offer_v1 *offer = nullptr;
-    std::vector<std::map<std::string, std::string>> clipboard_history;
+    std::list<std::map<std::string, std::string>> clipboard_history;
 
     // Callback implementations
     void handle_selection(zwlr_data_control_device_v1 *, zwlr_data_control_offer_v1 *offer);
@@ -39,4 +39,6 @@ private:
     bool handle_wayland_events(struct pollfd fds[2]);
     void process_clipboard_data(bool has_pipe_data);
     void handle_offer_completion();
+
+    void save_clipboard_data();
 };

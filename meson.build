@@ -25,18 +25,21 @@ data_control = wl_mod.scan_xml(data_control_xml) # generates the protocol C + he
 
 nlohmann_json = dependency('nlohmann_json', required: true)
 
+utf8cpp = dependency('utf8cpp', required: true)
+
 dependencies = [
   wl_client,
   nlohmann_json,
+  utf8cpp,
 ]
 
 executable(
   'wl-paste-cpp',
   [
-    'src/main.cpp',
-    'src/utils.cpp',
-    'src/WaylandClipboard.cpp',
-    'src/WaylandConnection.cpp',
+    'src/watcher/main.cpp',
+    'src/watcher/utils.cpp',
+    'src/watcher/WaylandClipboard.cpp',
+    'src/watcher/WaylandConnection.cpp',
   ],
   data_control,
   dependencies: dependencies,
