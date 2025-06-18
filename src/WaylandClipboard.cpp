@@ -1,15 +1,10 @@
 #include "WaylandClipboard.h"
 #include "utils.h"
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
 #include <unistd.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <iostream>
-#include <format>
-#include <algorithm>
-#include <ranges>
+#include <chrono>
 #include "base64.h"
 
 WaylandClipboard::~WaylandClipboard()
@@ -77,13 +72,13 @@ int WaylandClipboard::run()
             wl_display_dispatch_queue(display, event_queue);
         }
 
-        int ret = poll(fds, 2, 1000); // Wait for events for 10 ms
+        auto poll_time = std::chrono::milliseconds(500);
+        int ret = poll(fds, 2, poll_time.count()); // Wait for events for 500 ms
         if (ret < 0)
         {
             perror("poll");
             break;
         }
-        std::cout << "Poll returned: " << ret << std::endl;
 
         if (fds[0].revents & POLLIN)
         {
@@ -233,17 +228,17 @@ void WaylandClipboard::handle_data_offer(zwlr_data_control_device_v1 *, zwlr_dat
 
 void WaylandClipboard::handle_primary_selection(zwlr_data_control_device_v1 *, zwlr_data_control_offer_v1 *offer)
 {
+    // Primary selection is not handled.
     zwlr_data_control_offer_v1_destroy(offer);
-    // Handle primary selection if needed
 }
 
 void WaylandClipboard::handle_registry_global(wl_registry *reg, uint32_t name, const char *iface, uint32_t)
 {
-    if (strcmp(iface, wl_seat_interface.name) == 0)
+    if (std::string(iface) == wl_seat_interface.name)
     {
         seat = static_cast<wl_seat *>(wl_registry_bind(reg, name, &wl_seat_interface, 1));
     }
-    else if (strcmp(iface, zwlr_data_control_manager_v1_interface.name) == 0)
+    else if (std::string(iface) == zwlr_data_control_manager_v1_interface.name)
     {
         dc_manager = static_cast<zwlr_data_control_manager_v1 *>(
             wl_registry_bind(reg, name, &zwlr_data_control_manager_v1_interface, 2));
