@@ -32,7 +32,12 @@ dependencies = [
 
 executable(
   'wl-paste-cpp',
-  ['src/main.cpp', 'src/utils.cpp', 'src/WaylandClipboard.cpp'],
+  [
+    'src/main.cpp',
+    'src/utils.cpp',
+    'src/WaylandClipboard.cpp',
+    'src/WaylandConnection.cpp',
+  ],
   data_control,
   dependencies: dependencies,
   install: true,
