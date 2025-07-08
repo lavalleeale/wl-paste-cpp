@@ -1,5 +1,5 @@
 project(
-    'wl-paste-slurp',
+    'wl-copy-slurp',
     ['cpp', 'c'],
     meson_version: '>=0.62.0',
     default_options: [
@@ -35,13 +35,11 @@ utf8cpp = dependency('utf8cpp', required: true)
 dependencies = [wl_client, nlohmann_json, utf8cpp]
 
 default_target = executable(
-    'wl-copy-slurp',
+    'wl-copy-picker',
     [
         'main.cpp',
+        'ClipboardCopier.cpp',
         'utils.cpp',
-        'WaylandClipboard.cpp',
-        'WaylandConnection.cpp',
-        'Offer.cpp',
     ],
     data_control,
     dependencies: dependencies,

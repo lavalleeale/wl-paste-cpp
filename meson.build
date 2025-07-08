@@ -10,7 +10,7 @@ project(
     ],
 )
 
-subproj_names = ['watcher']
+subproj_names = ['watcher', 'copier']
 all_tgts = []
 
 foreach n : subproj_names

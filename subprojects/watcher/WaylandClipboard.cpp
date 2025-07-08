@@ -141,6 +141,10 @@ void WaylandClipboard::process_clipboard_data(bool has_pipe_data)
     while (more_data)
     {
         ssize_t n = read(pipe_fds[READ_FD_INDEX], buf, sizeof(buf));
+        if (n < 0)
+        {
+            break;
+        }
         content.append(buf, n);
         if (n != BUFFER_SIZE)
         {

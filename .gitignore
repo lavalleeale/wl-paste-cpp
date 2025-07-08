@@ -1,3 +1,4 @@
 /subprojects/nlohmann_json-*
 /subprojects/utfcpp-*
 /subprojects/packagecache
+!flake.*
