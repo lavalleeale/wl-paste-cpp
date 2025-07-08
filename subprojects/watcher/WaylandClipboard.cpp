@@ -250,7 +250,7 @@ void WaylandClipboard::save_clipboard_data()
         }
     }
     nlohmann::json json_data = encoded_history;
-    file << json_data.dump(4);
+    file << json_data.dump();
 }
 
 void WaylandClipboard::handle_selection(std::shared_ptr<Offer> offer)
