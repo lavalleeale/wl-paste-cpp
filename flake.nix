@@ -25,7 +25,7 @@
           default = self.packages.${system}.wl-paste-cpp;
           wl-paste-cpp = pkgs.stdenv.mkDerivation {
             pname = "wl-paste-cpp";
-            version = "0.1.0";
+            version = "0.2.0";
 
             src = ./.;
 
