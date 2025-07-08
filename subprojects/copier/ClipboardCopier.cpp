@@ -20,6 +20,7 @@ ClipboardCopier::ClipboardCopier(const std::string &command)
         // run the command with the clipboard history as stdin and save the output
         clipboard_data.clear();
         std::vector<std::string> options;
+        ssize_t image_options = 0;
         for (const auto &entry : clipboard_history)
         {
             if (entry.find("text/plain") != entry.end())
@@ -27,7 +28,14 @@ ClipboardCopier::ClipboardCopier(const std::string &command)
                 std::string option = entry.at("text/plain");
                 if (option.length() == 0)
                 {
-                    continue; // Skip empty options
+                    if (entry.size() == 0)
+                    {
+                        continue;
+                    }
+                    else
+                    {
+                        option = std::format("Non-text Clipboard Entry #{}", ++image_options);
+                    }
                 }
                 options.push_back(option);
             }
@@ -105,9 +113,23 @@ ClipboardCopier::ClipboardCopier(const std::string &command)
 
             int status;
             waitpid(pid, &status, 0);
+            image_options = 0;
             for (const auto &entry : clipboard_history)
             {
-                if (entry.find("text/plain") != entry.end() && entry.at("text/plain") == choice)
+                if (entry.find("text/plain") == entry.end())
+                {
+                    if (entry.size() == 0)
+                    {
+                        continue; // Skip empty entries
+                    }
+                    if (choice == std::format("Non-text Clipboard Entry #{}", ++image_options))
+                    {
+                        // If the choice matches a non-text entry, use it
+                        clipboard_data = entry;
+                        break; // Found the matching entry
+                    }
+                }
+                if (entry.at("text/plain") == choice)
                 {
                     clipboard_data = entry;
                     break; // Found the matching entry
