@@ -16,6 +16,7 @@
           wlr-protocols
           wayland-scanner
           meson
+          nlohmann_json
           ninja
           pkg-config
         ];
@@ -24,7 +25,7 @@
           default = self.packages.${system}.wl-paste-cpp;
           wl-paste-cpp = pkgs.stdenv.mkDerivation {
             pname = "wl-paste-cpp";
-            version = "0.5.1";
+            version = "0.1.0";
 
             src = ./.;
 
@@ -33,7 +34,7 @@
             buildInputs = dependencies;
 
             configurePhase = ''
-              meson setup build
+              meson setup -Dwrap_mode=nodownload build
             '';
 
             buildPhase = ''
@@ -42,8 +43,8 @@
 
             installPhase = ''
               mkdir -p $out/bin
-              cp ./builddir/subprojects/copier/wl-copy-picker $out/bin/
-              cp ./builddir/subprojects/watcher/wl-copy-slurp $out/bin/
+              cp ./build/subprojects/copier/wl-copy-picker $out/bin/
+              cp ./build/subprojects/watcher/wl-copy-slurp $out/bin/
 
               # Wrap the executable with proper environment variables
               wrapProgram $out/bin/wl-copy-picker \

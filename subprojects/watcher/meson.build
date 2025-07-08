@@ -30,9 +30,7 @@ data_control = wl_mod.scan_xml(data_control_xml) # generates the protocol C + he
 
 nlohmann_json = dependency('nlohmann_json', required: true)
 
-utf8cpp = dependency('utf8cpp', required: true)
-
-dependencies = [wl_client, nlohmann_json, utf8cpp]
+dependencies = [wl_client, nlohmann_json]
 
 default_target = executable(
     'wl-copy-slurp',

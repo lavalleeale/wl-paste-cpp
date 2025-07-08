@@ -7,7 +7,6 @@
 #include <chrono>
 #include <nlohmann/json.hpp>
 #include "base64.h"
-#include <utf8.h>
 #include <fstream>
 
 // Constants
@@ -159,10 +158,6 @@ void WaylandClipboard::process_clipboard_data(bool has_pipe_data)
             content = content.substr(0, BUFFER_SIZE);
         }
         trim(content);
-        if (!utf8::is_valid(content))
-        {
-            content = base64_encode(content);
-        }
         clipboard_history.front()[offer->pop_mime_type()] = content;
 
         if (offer->has_mime_types())
@@ -225,12 +220,18 @@ void WaylandClipboard::load_clipboard_data()
 
     file >> json_data;
     clipboard_history = json_data.get<std::list<std::map<std::string, std::string>>>();
+    for (auto &entry : clipboard_history)
+    {
+        for (auto &[mime, data] : entry)
+        {
+            data = base64_decode(data);
+        }
+    }
 }
 
 void WaylandClipboard::save_clipboard_data()
 {
     // Save clipboard_history to $XDG_DATA_HOME/clipboard_history.json
-    nlohmann::json json_data = clipboard_history;
     std::string data_home = getenv("XDG_DATA_HOME") ? getenv("XDG_DATA_HOME") : std::string(getenv("HOME")) + "/.local/share";
     std::string file_path = data_home + "/clipboard_history.json";
     std::ofstream file(file_path);
@@ -240,6 +241,15 @@ void WaylandClipboard::save_clipboard_data()
         return;
     }
 
+    auto encoded_history = clipboard_history;
+    for (auto &entry : encoded_history)
+    {
+        for (auto &[mime, data] : entry)
+        {
+            data = base64_encode(data);
+        }
+    }
+    nlohmann::json json_data = encoded_history;
     file << json_data.dump(4);
 }
 

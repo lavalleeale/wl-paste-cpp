@@ -6,6 +6,7 @@
 #include <fstream>
 #include <sys/wait.h>
 #include "utils.h"
+#include "base64.h"
 
 ClipboardCopier::ClipboardCopier(const std::string &command)
 {
@@ -258,4 +259,11 @@ void ClipboardCopier::load_clipboard_data()
 
     file >> json_data;
     clipboard_history = json_data.get<std::vector<std::map<std::string, std::string>>>();
+    for (auto &entry : clipboard_history)
+    {
+        for (auto &[mime, data] : entry)
+        {
+            data = base64_decode(data);
+        }
+    }
 }
