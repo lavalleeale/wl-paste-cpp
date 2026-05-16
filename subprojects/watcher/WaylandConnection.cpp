@@ -21,17 +21,30 @@ bool WaylandConnection::initialize()
     if (!event_queue)
     {
         std::cerr << "Failed to create event queue" << std::endl;
+        cleanup();
         return false;
     }
 
     registry = wl_display_get_registry(display);
+    if (!registry)
+    {
+        std::cerr << "Failed to get Wayland registry" << std::endl;
+        cleanup();
+        return false;
+    }
     wl_proxy_set_queue((struct wl_proxy *)registry, event_queue);
     wl_registry_add_listener(registry, &registry_listener, this);
-    wl_display_roundtrip_queue(display, event_queue);
+    if (wl_display_roundtrip_queue(display, event_queue) < 0)
+    {
+        std::cerr << "Failed during Wayland registry roundtrip" << std::endl;
+        cleanup();
+        return false;
+    }
 
     if (!seat || !dc_manager)
     {
         std::cerr << "Required Wayland protocols not available" << std::endl;
+        cleanup();
         return false;
     }
 
@@ -40,6 +53,7 @@ bool WaylandConnection::initialize()
 
 void WaylandConnection::cleanup()
 {
+    offers.clear();
     if (dc_device)
     {
         zwlr_data_control_device_v1_destroy(dc_device);
@@ -70,6 +84,7 @@ void WaylandConnection::cleanup()
         wl_display_disconnect(display);
         display = nullptr;
     }
+    running = false;
 }
 
 // Static callback wrapper
@@ -131,6 +146,7 @@ bool WaylandConnection::create_data_control_device()
 
     wl_proxy_set_queue((struct wl_proxy *)dc_device, event_queue);
     zwlr_data_control_device_v1_add_listener(dc_device, &dc_device_listener, this);
+    running = true;
 
     return true;
 }
@@ -172,6 +188,10 @@ void WaylandConnection::handle_offer(zwlr_data_control_offer_v1 *offer_ptr, cons
 
 void WaylandConnection::handle_selection(zwlr_data_control_device_v1 *, zwlr_data_control_offer_v1 *offer_ptr)
 {
+    if (!offer_ptr)
+    {
+        return;
+    }
     if (offer_ready_callback)
     {
         try
@@ -194,6 +214,10 @@ void WaylandConnection::handle_data_offer(zwlr_data_control_device_v1 *, zwlr_da
     }
     wl_proxy_set_queue((struct wl_proxy *)offer, event_queue);
     zwlr_data_control_offer_v1_add_listener(offer, &offer_listener, this);
-    wl_display_flush(display);
+    if (wl_display_flush(display) < 0)
+    {
+        std::cerr << "Failed to flush Wayland display" << std::endl;
+        running = false;
+    }
     offers.push_back(std::make_shared<Offer>(offer));
 }

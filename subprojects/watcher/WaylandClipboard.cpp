@@ -1,24 +1,22 @@
 #include "WaylandClipboard.h"
-#include "utils.h"
+#include "PosixIO.h"
 #include <unistd.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <iostream>
-#include <chrono>
-#include <nlohmann/json.hpp>
-#include "base64.h"
-#include <fstream>
+#include <cerrno>
+#include <algorithm>
 
 // Constants
 static constexpr size_t BUFFER_SIZE = 4096;
 static constexpr int POLL_FD_COUNT = 2;
 static constexpr int POLL_TIMEOUT_IDLE = 500;
-static constexpr int POLL_TIMEOUT_EXPECTING = 50;
+static constexpr int POLL_TIMEOUT_EXPECTING = 1000;
 static constexpr int READ_FD_INDEX = 0;
 static constexpr int WRITE_FD_INDEX = 1;
 static constexpr int WAYLAND_FD_INDEX = 0;
 static constexpr int PIPE_FD_INDEX = 1;
-static constexpr size_t MAX_CLIPBOARD_HISTORY_SIZE = 25;
+static constexpr size_t MAX_MIME_CONTENT_SIZE = 1024 * 1024;
 
 WaylandClipboard::~WaylandClipboard()
 {
@@ -42,11 +40,6 @@ bool WaylandClipboard::initialize()
         return false;
     }
 
-    if (!setup_pipe())
-    {
-        return false;
-    }
-
     return true;
 }
 
@@ -57,10 +50,9 @@ int WaylandClipboard::run()
     struct pollfd fds[POLL_FD_COUNT];
     setup_polling(fds);
 
-    bool pipe_closed = false;
     bool waited = false;
 
-    while (!pipe_closed)
+    while (connection.is_running())
     {
         try
         {
@@ -72,24 +64,31 @@ int WaylandClipboard::run()
         }
         catch (const std::exception &e)
         {
-            return 0;
+            std::cerr << e.what() << std::endl;
+            return 1;
         }
 
-        if (offer)
+        if (offer && read_fd >= 0)
         {
             if (waited || (fds[PIPE_FD_INDEX].revents & POLLIN))
             {
                 process_clipboard_data(fds[PIPE_FD_INDEX].revents & POLLIN);
             }
-            if (offer->has_mime_types() && !(fds[PIPE_FD_INDEX].revents & POLLIN))
+            if (read_fd >= 0 && !(fds[PIPE_FD_INDEX].revents & POLLIN))
             {
                 waited = true;
             }
+            else
+            {
+                waited = false;
+            }
         }
 
-        // If we have MIME types to process and there is nothing
-
-        wl_display_flush(connection.get_display());
+        if (wl_display_flush(connection.get_display()) < 0)
+        {
+            std::cerr << "Failed to flush Wayland display" << std::endl;
+            return 1;
+        }
     }
 
     return 0;
@@ -99,8 +98,9 @@ void WaylandClipboard::setup_polling(struct pollfd fds[POLL_FD_COUNT])
 {
     fds[WAYLAND_FD_INDEX].fd = wl_display_get_fd(connection.get_display());
     fds[WAYLAND_FD_INDEX].events = POLLIN;
-    fds[PIPE_FD_INDEX].fd = pipe_fds[READ_FD_INDEX];
+    fds[PIPE_FD_INDEX].fd = read_fd;
     fds[PIPE_FD_INDEX].events = POLLIN;
+    fds[PIPE_FD_INDEX].revents = 0;
 }
 
 bool WaylandClipboard::handle_wayland_events(struct pollfd fds[POLL_FD_COUNT])
@@ -110,7 +110,8 @@ bool WaylandClipboard::handle_wayland_events(struct pollfd fds[POLL_FD_COUNT])
         wl_display_dispatch_queue(connection.get_display(), connection.get_event_queue());
     }
 
-    int timeout = (offer && offer->has_mime_types()) ? POLL_TIMEOUT_EXPECTING : POLL_TIMEOUT_IDLE;
+    setup_polling(fds);
+    int timeout = (read_fd >= 0) ? POLL_TIMEOUT_EXPECTING : POLL_TIMEOUT_IDLE;
     int ret = poll(fds, POLL_FD_COUNT, timeout);
     if (ret < 0)
     {
@@ -120,8 +121,11 @@ bool WaylandClipboard::handle_wayland_events(struct pollfd fds[POLL_FD_COUNT])
 
     if (fds[WAYLAND_FD_INDEX].revents & POLLIN)
     {
-        wl_display_read_events(connection.get_display());
-        wl_display_dispatch_queue(connection.get_display(), connection.get_event_queue());
+        if (wl_display_read_events(connection.get_display()) < 0 ||
+            wl_display_dispatch_queue(connection.get_display(), connection.get_event_queue()) < 0)
+        {
+            throw std::runtime_error("Failed to read Wayland events");
+        }
         return true;
     }
     else
@@ -134,35 +138,42 @@ bool WaylandClipboard::handle_wayland_events(struct pollfd fds[POLL_FD_COUNT])
 void WaylandClipboard::process_clipboard_data(bool has_pipe_data)
 {
     char buf[BUFFER_SIZE];
-    std::string content = "";
-    bool more_data = has_pipe_data;
+    bool saw_eof = !has_pipe_data;
 
-    while (more_data)
+    while (read_fd >= 0)
     {
-        ssize_t n = read(pipe_fds[READ_FD_INDEX], buf, sizeof(buf));
+        ssize_t n = read(read_fd, buf, sizeof(buf));
         if (n < 0)
         {
+            if (errno == EINTR)
+            {
+                continue;
+            }
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+            {
+                break;
+            }
+            perror("read");
+            saw_eof = true;
             break;
         }
-        content.append(buf, n);
-        if (n != BUFFER_SIZE)
+        if (n == 0)
         {
-            more_data = false; // No more data available
+            saw_eof = true;
+            break;
         }
+        const auto remaining = MAX_MIME_CONTENT_SIZE - current_content.size();
+        current_content.append(buf, std::min<std::size_t>(static_cast<std::size_t>(n), remaining));
     }
 
-    if ((!has_pipe_data || !content.empty()) && offer && offer->has_mime_types())
+    if (saw_eof && offer && !current_mime.empty() && !clipboard_history.empty())
     {
-        if (content.size() > BUFFER_SIZE)
-        {
-            content = content.substr(0, BUFFER_SIZE);
-        }
-        trim(content);
-        clipboard_history.front()[offer->pop_mime_type()] = content;
+        clipboard_history.front()[current_mime] = current_content;
+        finish_current_mime_read();
 
         if (offer->has_mime_types())
         {
-            offer->read_next_mime(pipe_fds[WRITE_FD_INDEX]);
+            start_next_mime_read();
         }
         else
         {
@@ -174,11 +185,22 @@ void WaylandClipboard::process_clipboard_data(bool has_pipe_data)
 void WaylandClipboard::handle_offer_completion()
 {
     std::cout << "Offer completed, processing clipboard data" << std::endl;
+    offer.reset();
+    current_mime.clear();
+    current_content.clear();
+    if (clipboard_history.empty() || clipboard_history.front().empty())
+    {
+        if (!clipboard_history.empty())
+        {
+            clipboard_history.erase(clipboard_history.begin());
+        }
+        return;
+    }
     // Check if we already have this entry (important on startup)
     if (clipboard_history.size() > 1)
     {
-        auto first = clipboard_history.front();
-        auto second = *std::next(clipboard_history.begin());
+        const auto first = clipboard_history.front();
+        const auto second = clipboard_history[1];
         for (const auto &[key, value] : second)
         {
             if (copied)
@@ -187,15 +209,16 @@ void WaylandClipboard::handle_offer_completion()
                 {
                     // If the first and second entries are the same, we can skip this check
                     std::cerr << "Skipping duplicate entry in clipboard history" << std::endl;
-                    clipboard_history.pop_front();
+                    clipboard_history.erase(clipboard_history.begin());
                     break;
                 }
             }
             else
             {
-                if (value != "" && first.find(key) != first.end() && first[key] == value)
+                auto first_value = first.find(key);
+                if (value != "" && first_value != first.end() && first_value->second == value)
                 {
-                    clipboard_history.erase(std::next(clipboard_history.begin()));
+                    clipboard_history.erase(clipboard_history.begin() + 1);
                     break;
                 }
             }
@@ -207,96 +230,86 @@ void WaylandClipboard::handle_offer_completion()
 
 void WaylandClipboard::load_clipboard_data()
 {
-    // Load clipboard_history from $XDG_DATA_HOME/clipboard_history.json
-    nlohmann::json json_data;
-    std::string data_home = getenv("XDG_DATA_HOME") ? getenv("XDG_DATA_HOME") : std::string(getenv("HOME")) + "/.local/share";
-    std::string file_path = data_home + "/clipboard_history.json";
-    std::ifstream file(file_path);
-    if (!file.is_open())
-    {
-        std::cerr << "Failed to open file for reading: " << file_path << std::endl;
-        return;
-    }
-
-    file >> json_data;
-    clipboard_history = json_data.get<std::list<std::map<std::string, std::string>>>();
-    for (auto &entry : clipboard_history)
-    {
-        for (auto &[mime, data] : entry)
-        {
-            data = base64_decode(data);
-        }
-    }
+    clipboard_history = clipboard::load_history();
 }
 
 void WaylandClipboard::save_clipboard_data()
 {
-    // Save clipboard_history to $XDG_DATA_HOME/clipboard_history.json
-    std::string data_home = getenv("XDG_DATA_HOME") ? getenv("XDG_DATA_HOME") : std::string(getenv("HOME")) + "/.local/share";
-    std::string file_path = data_home + "/clipboard_history.json";
-    std::ofstream file(file_path);
-    if (!file.is_open())
-    {
-        std::cerr << "Failed to open file for writing: " << file_path << std::endl;
-        return;
-    }
-
-    auto encoded_history = clipboard_history;
-    for (auto &entry : encoded_history)
-    {
-        for (auto &[mime, data] : entry)
-        {
-            data = base64_encode(data);
-        }
-    }
-    nlohmann::json json_data = encoded_history;
-    file << json_data.dump();
+    clipboard::save_history(clipboard_history);
 }
 
 void WaylandClipboard::handle_selection(std::shared_ptr<Offer> offer)
 {
-    clipboard_history.push_front(std::map<std::string, std::string>());
-    if (clipboard_history.size() > MAX_CLIPBOARD_HISTORY_SIZE)
+    if (this->offer && !clipboard_history.empty() && clipboard_history.front().empty())
     {
-        clipboard_history.pop_back(); // Limit history size to 25 entries
+        clipboard_history.erase(clipboard_history.begin());
     }
-
-    if (offer->has_mime_types())
-    {
-        this->offer = offer;
-        offer->read_next_mime(pipe_fds[WRITE_FD_INDEX]);
-
-        wl_display_flush(connection.get_display());
-    }
-    else
+    finish_current_mime_read();
+    this->offer = offer;
+    if (!offer || !offer->has_mime_types())
     {
         std::cerr << "No MIME types available in the offer" << std::endl;
+        return;
+    }
+
+    clipboard_history.insert(clipboard_history.begin(), clipboard::ClipboardEntry());
+    clipboard::trim_history(clipboard_history);
+    if (!start_next_mime_read())
+    {
+        clipboard_history.erase(clipboard_history.begin());
+        this->offer.reset();
     }
 }
 
-bool WaylandClipboard::setup_pipe()
+bool WaylandClipboard::start_next_mime_read()
 {
+    if (!offer || !offer->has_mime_types())
+    {
+        return false;
+    }
+
+    int pipe_fds[2] = {-1, -1};
     if (pipe(pipe_fds) < 0)
     {
         perror("pipe");
         return false;
     }
+    clipboard::UniqueFd read_pipe(pipe_fds[READ_FD_INDEX]);
+    clipboard::UniqueFd write_pipe(pipe_fds[WRITE_FD_INDEX]);
 
-    int flags = fcntl(pipe_fds[0], F_GETFL);
-    fcntl(pipe_fds[0], F_SETFL, flags | O_NONBLOCK);
+    if (!clipboard::set_nonblocking(read_pipe.get()))
+    {
+        perror("fcntl");
+        return false;
+    }
+
+    read_fd = read_pipe.release();
+    current_mime = offer->pop_mime_type();
+    current_content.clear();
+    offer->receive_mime(current_mime, write_pipe.get());
+    write_pipe.reset();
+    if (wl_display_flush(connection.get_display()) < 0)
+    {
+        std::cerr << "Failed to flush Wayland display" << std::endl;
+        finish_current_mime_read();
+        return false;
+    }
     return true;
+}
+
+void WaylandClipboard::finish_current_mime_read()
+{
+    if (read_fd >= 0)
+    {
+        close(read_fd);
+        read_fd = -1;
+    }
+    current_mime.clear();
+    current_content.clear();
 }
 
 void WaylandClipboard::cleanup()
 {
-    if (pipe_fds[READ_FD_INDEX] != -1)
-    {
-        close(pipe_fds[READ_FD_INDEX]);
-        pipe_fds[READ_FD_INDEX] = -1;
-    }
-    if (pipe_fds[WRITE_FD_INDEX] != -1)
-    {
-        close(pipe_fds[WRITE_FD_INDEX]);
-        pipe_fds[WRITE_FD_INDEX] = -1;
-    }
+    finish_current_mime_read();
+    offer.reset();
 }

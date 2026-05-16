@@ -10,15 +10,15 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
-        dependencies = with pkgs; [
-          wayland
-          wayland-protocols
-          wlr-protocols
-          wayland-scanner
+        buildDependencies = with pkgs; [ wayland nlohmann_json ];
+        nativeDependencies = with pkgs; [
+          cmake
           meson
-          nlohmann_json
           ninja
           pkg-config
+          wayland-protocols
+          wayland-scanner
+          wlr-protocols
         ];
       in {
         packages = {
@@ -29,9 +29,9 @@
 
             src = ./.;
 
-            nativeBuildInputs = [ pkgs.pkg-config pkgs.makeWrapper ];
+            nativeBuildInputs = nativeDependencies;
 
-            buildInputs = dependencies;
+            buildInputs = buildDependencies;
 
             configurePhase = ''
               meson setup -Dwrap_mode=nodownload build
@@ -41,24 +41,16 @@
               meson compile -C build
             '';
 
+            checkPhase = ''
+              meson test -C build --print-errorlogs
+            '';
+
+            doCheck = true;
+
             installPhase = ''
               mkdir -p $out/bin
               cp ./build/subprojects/copier/wl-copy-picker $out/bin/
               cp ./build/subprojects/watcher/wl-copy-slurp $out/bin/
-
-              # Wrap the executable with proper environment variables
-              wrapProgram $out/bin/wl-copy-picker \
-                --prefix LD_LIBRARY_PATH : "${
-                  pkgs.lib.makeLibraryPath dependencies
-                }" \
-                --prefix XDG_DATA_DIRS : "$XDG_ICON_DIRS:$GSETTINGS_SCHEMAS_PATH" \
-                --set GSETTINGS_SCHEMAS_PATH "${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}"
-              wrapProgram $out/bin/wl-copy-slurp \
-                --prefix LD_LIBRARY_PATH : "${
-                  pkgs.lib.makeLibraryPath dependencies
-                }" \
-                --prefix XDG_DATA_DIRS : "$XDG_ICON_DIRS:$GSETTINGS_SCHEMAS_PATH" \
-                --set GSETTINGS_SCHEMAS_PATH "${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}"
             '';
 
             meta = {
@@ -69,8 +61,8 @@
         };
 
         devShells.default = pkgs.mkShell {
-          nativeBuildInputs = [ pkgs.pkg-config pkgs.gdb ];
-          buildInputs = dependencies;
+          nativeBuildInputs = nativeDependencies ++ [ pkgs.gdb ];
+          buildInputs = buildDependencies;
         };
       });
 }

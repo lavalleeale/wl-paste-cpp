@@ -12,6 +12,8 @@ project(
 
 subproj_names = ['watcher', 'copier']
 all_tgts = []
+nlohmann_json = dependency('nlohmann_json', required: true)
+clipboard_common_dep = dependency('clipboard_common', fallback: ['common', 'clipboard_common_dep'])
 
 foreach n : subproj_names
     sp = subproject(n)
@@ -20,3 +22,13 @@ foreach n : subproj_names
 endforeach
 
 alias_target('everything', all_tgts)
+
+history_io_test = executable(
+    'history-io-test',
+    [
+        'tests/history_io_test.cpp',
+    ],
+    dependencies: [nlohmann_json, clipboard_common_dep],
+)
+
+test('history and io helpers', history_io_test)

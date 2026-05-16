@@ -5,6 +5,7 @@
 #include "wlr-data-control-unstable-v1-client-protocol.h"
 #include <vector>
 #include <map>
+#include "ClipboardHistory.h"
 
 class ClipboardCopier
 {
@@ -23,6 +24,7 @@ private:
     static void data_source_cancelled_s(void *data, struct zwlr_data_control_source_v1 *source);
 
     void load_clipboard_data();
+    bool choose_clipboard_data(const std::string &command);
 
     // Wayland objects
     wl_display *display = nullptr;
@@ -34,8 +36,8 @@ private:
 
     // State
     bool running = true;
-    std::map<std::string, std::string> clipboard_data;
-    std::vector<std::map<std::string, std::string>> clipboard_history;
+    clipboard::ClipboardEntry clipboard_data;
+    clipboard::ClipboardHistory clipboard_history;
 
     // Listener structs
     static const struct wl_registry_listener registry_listener;

@@ -6,8 +6,8 @@
 #include <string>
 #include <queue>
 #include <map>
-#include <list>
 #include <memory>
+#include "ClipboardHistory.h"
 
 class WaylandClipboard
 {
@@ -24,15 +24,16 @@ public:
 
 private:
     WaylandConnection connection;
-    int pipe_fds[2] = {-1, -1};
+    int read_fd = -1;
     std::shared_ptr<Offer> offer = nullptr;
-    std::list<std::map<std::string, std::string>> clipboard_history;
+    clipboard::ClipboardHistory clipboard_history;
+    std::string current_mime;
+    std::string current_content;
     bool copied = false;
 
     // Callback implementations
     void handle_selection(std::shared_ptr<Offer> offer);
 
-    bool setup_pipe();
     void cleanup();
 
     // Helper methods for run() function
@@ -40,6 +41,8 @@ private:
     bool handle_wayland_events(struct pollfd fds[2]);
     void process_clipboard_data(bool has_pipe_data);
     void handle_offer_completion();
+    bool start_next_mime_read();
+    void finish_current_mime_read();
 
     void save_clipboard_data();
     void load_clipboard_data();

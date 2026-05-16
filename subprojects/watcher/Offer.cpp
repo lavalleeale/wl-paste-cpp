@@ -16,7 +16,7 @@ std::string Offer::pop_mime_type()
     return mime_type;
 }
 
-void Offer::read_next_mime(int fd)
+void Offer::receive_mime(const std::string &mime_type, int fd)
 {
-    zwlr_data_control_offer_v1_receive(offer, mime_types.front().c_str(), fd);
+    zwlr_data_control_offer_v1_receive(offer, mime_type.c_str(), fd);
 }

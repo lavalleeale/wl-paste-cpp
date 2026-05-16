@@ -27,6 +27,7 @@ public:
     wl_seat *get_seat() const { return seat; }
     zwlr_data_control_manager_v1 *get_data_control_manager() const { return dc_manager; }
     zwlr_data_control_device_v1 *get_data_control_device() const { return dc_device; }
+    bool is_running() const { return running; }
 
     // Callback registration
     void set_offer_ready_callback(std::function<void(std::shared_ptr<Offer>)> callback) { offer_ready_callback = callback; }
@@ -42,6 +43,7 @@ private:
     zwlr_data_control_manager_v1 *dc_manager = nullptr;
     zwlr_data_control_device_v1 *dc_device = nullptr;
     std::list<std::shared_ptr<Offer>> offers;
+    bool running = true;
 
     std::shared_ptr<Offer> get_offer(zwlr_data_control_offer_v1 *offer, bool pop = false);
 
@@ -76,8 +78,13 @@ private:
         .selection = selection_handle_wrapper,
         .finished = [](void *data,
                        struct zwlr_data_control_device_v1 *)
-        { static_cast<WaylandConnection *>(data)->cleanup(); },
+        { static_cast<WaylandConnection *>(data)->running = false; },
         .primary_selection = [](void *, zwlr_data_control_device_v1 *, zwlr_data_control_offer_v1 *offer)
-        { zwlr_data_control_offer_v1_destroy(offer); },
+        {
+            if (offer)
+            {
+                zwlr_data_control_offer_v1_destroy(offer);
+            }
+        },
     };
 };

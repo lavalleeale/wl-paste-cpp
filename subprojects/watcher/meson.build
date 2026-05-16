@@ -29,14 +29,14 @@ data_control_xml = join_paths(
 data_control = wl_mod.scan_xml(data_control_xml) # generates the protocol C + headers :contentReference[oaicite:1]{index=1}
 
 nlohmann_json = dependency('nlohmann_json', required: true)
+clipboard_common_dep = dependency('clipboard_common', fallback: ['common', 'clipboard_common_dep'])
 
-dependencies = [wl_client, nlohmann_json]
+dependencies = [wl_client, nlohmann_json, clipboard_common_dep]
 
 default_target = executable(
     'wl-copy-slurp',
     [
         'main.cpp',
-        'utils.cpp',
         'WaylandClipboard.cpp',
         'WaylandConnection.cpp',
         'Offer.cpp',

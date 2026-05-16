@@ -11,11 +11,16 @@ public:
     Offer(zwlr_data_control_offer_v1 *offer) : offer(offer) {}
     ~Offer() { zwlr_data_control_offer_v1_destroy(offer); }
 
+    Offer(const Offer &) = delete;
+    Offer &operator=(const Offer &) = delete;
+    Offer(Offer &&) = delete;
+    Offer &operator=(Offer &&) = delete;
+
     void add_mime_type(const std::string &mime_type);
     bool matches(zwlr_data_control_offer_v1 *other_offer) const { return offer == other_offer; }
     bool has_mime_types() const { return !mime_types.empty(); }
     std::string pop_mime_type();
-    void read_next_mime(int fd);
+    void receive_mime(const std::string &mime_type, int fd);
 
 private:
     std::queue<std::string> mime_types = std::queue<std::string>();
