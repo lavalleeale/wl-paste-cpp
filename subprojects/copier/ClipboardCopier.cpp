@@ -197,6 +197,10 @@ std::string picker_label(std::size_t index, const clipboard::ClipboardEntry &ent
             return std::format("{}: {}", index + 1, preview);
         }
     }
+    if (!entry.empty())
+    {
+        return std::format("{}: Non-text Clipboard Entry ({})", index + 1, entry.begin()->first);
+    }
     return std::format("{}: Non-text Clipboard Entry", index + 1);
 }
 }
